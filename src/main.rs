@@ -81,7 +81,7 @@ fn build_ui(app: &Application) {
     let list_box_clone = list_box.clone();
     add_button.connect_clicked(move |_| {
         let name = name_entry.text().to_string();
-        let secret = secret_entry.text().to_string();
+        let secret = secret_entry.text().to_string().replace(" ", "");
         if !name.is_empty() && !secret.is_empty() {
             let mut state = state_clone.lock().unwrap();
             state.entries.insert(
@@ -197,21 +197,18 @@ fn update_list_box(
             6,
             1,
             30,
-            Secret::Raw(entry.secret.clone().into_bytes())
-                .to_bytes()
-                .unwrap(),
+            Secret::Encoded(entry.secret.clone()).to_bytes().unwrap(),
         )
         .unwrap();
 
-        let current_token = totp.generate_current().unwrap();
-        let next_token = totp.generate(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs()
-                / 30
-                + 1,
-        );
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let current_token = totp.generate(current_time);
+        let prev_token = totp.generate(current_time.saturating_sub(30));
+        let next_token = totp.generate(current_time + 30);
 
         let remaining = 30
             - (std::time::SystemTime::now()
@@ -252,10 +249,10 @@ fn update_list_box(
         let gesture = gtk::GestureClick::new();
         gesture.set_button(1);
         gesture.connect_released(
-            clone!(@strong current_token, @strong next_token => move |_, _, _, _| {
+            clone!(@strong current_token, @strong prev_token, @strong next_token => move |_, _, _, _| {
                 if let Some(display) = Display::default() {
                     let clipboard = display.clipboard();
-                    clipboard.set_text(&format!("{} {}", current_token, next_token));
+                    clipboard.set_text(&format!("{} {} {}", prev_token, current_token, next_token));
                 }
             }),
         );
