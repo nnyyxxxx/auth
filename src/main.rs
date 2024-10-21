@@ -11,7 +11,6 @@ use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use totp_rs::{Secret, TOTP};
 
