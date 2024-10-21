@@ -1,4 +1,5 @@
-use glib::Continue;
+use gtk::gdk::Display;
+use gtk::glib::clone;
 use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box as GtkBox, Button, Entry, Label, ListBox, Orientation,
@@ -93,7 +94,7 @@ fn build_ui(app: &Application) {
             save_entries(&state.entries).unwrap();
             name_entry.set_text("");
             secret_entry.set_text("");
-            update_list_box(&list_box_clone, &state.entries);
+            update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
         }
     });
 
@@ -148,7 +149,11 @@ fn build_ui(app: &Application) {
                             let mut state = state_clone.lock().unwrap();
                             state.entries.extend(imported_entries);
                             save_entries(&state.entries).unwrap();
-                            update_list_box(&list_box_clone, &state.entries);
+                            update_list_box(
+                                &list_box_clone,
+                                &state.entries,
+                                Arc::clone(&state_clone),
+                            );
                         }
                         Err(e) => eprintln!("Failed to import entries: {}", e),
                     }
@@ -160,13 +165,17 @@ fn build_ui(app: &Application) {
     });
 
     let state_clone = Arc::clone(&state);
-    update_list_box(&list_box, &state_clone.lock().unwrap().entries);
+    update_list_box(
+        &list_box,
+        &state_clone.lock().unwrap().entries,
+        Arc::clone(&state_clone),
+    );
 
     let state_clone = Arc::clone(&state);
     let list_box_clone = list_box.clone();
     glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
         let state = state_clone.lock().unwrap();
-        update_list_box(&list_box_clone, &state.entries);
+        update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
         Continue(true)
     });
 
@@ -174,11 +183,15 @@ fn build_ui(app: &Application) {
     window.present();
 }
 
-fn update_list_box(list_box: &ListBox, entries: &HashMap<String, TOTPEntry>) {
+fn update_list_box(
+    list_box: &ListBox,
+    entries: &HashMap<String, TOTPEntry>,
+    state: Arc<Mutex<AppState>>,
+) {
     while let Some(child) = list_box.first_child() {
         list_box.remove(&child);
     }
-    for (_, entry) in entries {
+    for entry in entries.values() {
         let totp = TOTP::new(
             totp_rs::Algorithm::SHA1,
             6,
@@ -196,10 +209,46 @@ fn update_list_box(list_box: &ListBox, entries: &HashMap<String, TOTPEntry>) {
                 .unwrap()
                 .as_secs()
                 % 30);
+
         let row = GtkBox::new(Orientation::Horizontal, 5);
-        row.append(&Label::new(Some(&entry.name)));
-        row.append(&Label::new(Some(&token)));
-        row.append(&Label::new(Some(&format!("{}s", remaining))));
+        row.set_hexpand(true);
+
+        let name_label = Label::new(Some(&entry.name));
+        let token_label = Label::new(Some(&token));
+        let remaining_label = Label::new(Some(&format!("{}s", remaining)));
+
+        let spacer = GtkBox::new(Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+
+        let remove_button = Button::with_label("X");
+        remove_button.set_valign(gtk::Align::Center);
+
+        let state_clone = Arc::clone(&state);
+        let entry_name = entry.name.clone();
+        let list_box_clone = list_box.clone();
+        remove_button.connect_clicked(move |_| {
+            let mut state = state_clone.lock().unwrap();
+            state.entries.remove(&entry_name);
+            save_entries(&state.entries).unwrap();
+            update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
+        });
+
+        row.append(&name_label);
+        row.append(&token_label);
+        row.append(&remaining_label);
+        row.append(&spacer);
+        row.append(&remove_button);
+
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(1);
+        gesture.connect_released(clone!(@strong token => move |_, _, _, _| {
+            if let Some(display) = Display::default() {
+                let clipboard = display.clipboard();
+                clipboard.set_text(&token);
+            }
+        }));
+        row.add_controller(&gesture);
+
         list_box.append(&row);
     }
 }
