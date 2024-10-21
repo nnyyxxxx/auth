@@ -62,19 +62,23 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
         let secret = secret_entry.text().to_string().replace(" ", "");
         if !name.is_empty() && !secret.is_empty() {
             let mut state = state_clone.lock().unwrap();
-            state.entries.insert(
-                name.clone(),
-                TOTPEntry {
-                    name: name.clone(),
-                    secret,
-                },
-            );
-            if let Err(e) = storage::save_entries(&state.entries) {
-                eprintln!("Failed to save entries: {}", e);
+            if !state.entries.contains_key(&name) {
+                state.entries.insert(
+                    name.clone(),
+                    TOTPEntry {
+                        name: name.clone(),
+                        secret: secret.clone(),
+                    },
+                );
+                if let Err(e) = storage::save_entries(&state.entries) {
+                    eprintln!("Failed to save entries: {}", e);
+                }
+                name_entry.set_text("");
+                secret_entry.set_text("");
+                update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
+            } else {
+                eprintln!("Entry with name '{}' already exists", name);
             }
-            name_entry.set_text("");
-            secret_entry.set_text("");
-            update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
         }
     });
 
@@ -282,10 +286,13 @@ fn update_list_box(
             row.add_controller(&gesture);
         }
 
-        let current_token = totp::generate_totp(&entry.secret, current_time).unwrap_or_else(|e| {
-            eprintln!("Error generating TOTP for {}: {}", entry.name, e);
-            "Error".to_string()
-        });
+        let current_token = match totp::generate_totp(&entry.secret, current_time) {
+            Ok(token) => token,
+            Err(e) => {
+                eprintln!("Error generating TOTP for {}: {}", entry.name, e);
+                "Invalid".to_string()
+            }
+        };
 
         if let Some(token_label) = row.first_child().and_then(|c| c.next_sibling()) {
             if let Ok(label) = token_label.downcast::<Label>() {
