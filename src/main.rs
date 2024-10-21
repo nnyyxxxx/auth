@@ -66,10 +66,15 @@ fn build_ui(app: &Application) {
     scroll.set_child(Some(&list_box));
     main_box.append(&scroll);
 
+    let button_box = GtkBox::new(Orientation::Horizontal, 5);
+    button_box.set_halign(gtk::Align::End);
+    button_box.set_margin_top(10);
+
+    let import_button = Button::with_label("Import");
     let backup_button = Button::with_label("Backup");
-    backup_button.set_halign(gtk::Align::End);
-    backup_button.set_margin_top(10);
-    main_box.append(&backup_button);
+    button_box.append(&import_button);
+    button_box.append(&backup_button);
+    main_box.append(&button_box);
 
     let state_clone = Arc::clone(&state);
     let list_box_clone = list_box.clone();
@@ -112,6 +117,40 @@ fn build_ui(app: &Application) {
                     let state = state_clone.lock().unwrap();
                     if let Err(e) = backup_entries(&state.entries, path) {
                         eprintln!("Failed to backup entries: {}", e);
+                    }
+                }
+            }
+            dialog.close();
+        });
+        file_chooser.show();
+    });
+
+    let state_clone = Arc::clone(&state);
+    let window_clone = window.clone();
+    let list_box_clone = list_box.clone();
+    import_button.connect_clicked(move |_| {
+        let file_chooser = gtk::FileChooserDialog::new(
+            Some("Import Backup"),
+            Some(&window_clone),
+            gtk::FileChooserAction::Open,
+            &[
+                ("Cancel", gtk::ResponseType::Cancel),
+                ("Open", gtk::ResponseType::Accept),
+            ],
+        );
+        let state_clone = Arc::clone(&state_clone);
+        let list_box_clone = list_box_clone.clone();
+        file_chooser.connect_response(move |dialog, response| {
+            if response == gtk::ResponseType::Accept {
+                if let Some(path) = dialog.file().and_then(|f| f.path()) {
+                    match import_entries(path) {
+                        Ok(imported_entries) => {
+                            let mut state = state_clone.lock().unwrap();
+                            state.entries.extend(imported_entries);
+                            save_entries(&state.entries).unwrap();
+                            update_list_box(&list_box_clone, &state.entries);
+                        }
+                        Err(e) => eprintln!("Failed to import entries: {}", e),
                     }
                 }
             }
@@ -183,4 +222,11 @@ fn backup_entries(
     let data = serde_json::to_string(entries)?;
     std::fs::write(path, data)?;
     Ok(())
+}
+
+fn import_entries(
+    path: std::path::PathBuf,
+) -> Result<HashMap<String, TOTPEntry>, Box<dyn std::error::Error>> {
+    let data = std::fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&data)?)
 }
