@@ -20,6 +20,7 @@ serde_json = "1.0"
 glib = "0.16"
 futures = "0.3"
 dirs = "5.0"
+base32 = "0.4"
 
 [profile.release]
 lto = "fat"

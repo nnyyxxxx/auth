@@ -179,9 +179,20 @@ fn update_list_box(
             .unwrap()
             .as_secs();
 
-        let current_token = totp::generate_totp(&entry.secret, current_time);
-        let prev_token = totp::generate_totp(&entry.secret, current_time.saturating_sub(30));
-        let next_token = totp::generate_totp(&entry.secret, current_time + 30);
+        let current_token = totp::generate_totp(&entry.secret, current_time).unwrap_or_else(|e| {
+            eprintln!("Error generating TOTP for {}: {}", entry.name, e);
+            "Error".to_string()
+        });
+        let prev_token = totp::generate_totp(&entry.secret, current_time.saturating_sub(30))
+            .unwrap_or_else(|e| {
+                eprintln!("Error generating previous TOTP for {}: {}", entry.name, e);
+                "Error".to_string()
+            });
+        let next_token =
+            totp::generate_totp(&entry.secret, current_time + 30).unwrap_or_else(|e| {
+                eprintln!("Error generating next TOTP for {}: {}", entry.name, e);
+                "Error".to_string()
+            });
 
         let remaining = 30
             - (std::time::SystemTime::now()
