@@ -293,7 +293,11 @@ fn update_list_box(
             }
         }
 
-        if let Some(remaining_label) = row.first_child().and_then(|c| c.next_sibling()).and_then(|c| c.next_sibling()) {
+        if let Some(remaining_label) = row
+            .first_child()
+            .and_then(|c| c.next_sibling())
+            .and_then(|c| c.next_sibling())
+        {
             if let Ok(label) = remaining_label.downcast::<Label>() {
                 label.set_label(&format!("{}s", remaining));
             }
