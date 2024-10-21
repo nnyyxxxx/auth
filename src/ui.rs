@@ -270,40 +270,52 @@ fn update_list_box(
             let name_box_clone = name_box.clone();
             let editing_clone = Arc::clone(editing);
             edit_button.connect_clicked(move |_| {
-                editing_clone.lock().unwrap().insert(entry_name.clone());
-                let edit_entry = Entry::new();
-                edit_entry.set_text(&entry_name);
-                name_box_clone.remove(&name_label);
-                name_box_clone.append(&edit_entry);
+                let mut editing_set = editing_clone.lock().unwrap();
+                if !editing_set.contains(&entry_name) {
+                    editing_set.insert(entry_name.clone());
+                    let edit_entry = Entry::new();
+                    edit_entry.set_text(&entry_name);
 
-                let edit_entry_clone = edit_entry.clone();
-                let editing_clone_inner = Arc::clone(&editing_clone);
-                edit_entry.connect_activate(clone!(@strong state_clone, @strong list_box_clone, @strong entry_name, @strong name_box_clone, @strong edit_entry_clone => move |_| {
-                    let new_name = edit_entry_clone.text().to_string();
-                    if !new_name.is_empty() && new_name != entry_name {
-                        let mut state = state_clone.lock().unwrap();
-                        if let Some(entry) = state.entries.remove(&entry_name) {
-                            let updated_entry = TOTPEntry { name: new_name.clone(), secret: entry.secret };
-                            state.entries.insert(new_name.clone(), updated_entry);
-                            if let Err(e) = storage::save_entries(&state.entries) {
-                                eprintln!("Failed to save entries: {}", e);
-                            }
-                        }
-                        drop(state);
-
-                        name_box_clone.remove(&edit_entry_clone);
-                        let new_label = Label::new(Some(&new_name));
-                        name_box_clone.append(&new_label);
-                    } else {
-                        name_box_clone.remove(&edit_entry_clone);
-                        let original_label = Label::new(Some(&entry_name));
-                        name_box_clone.append(&original_label);
+                    while let Some(child) = name_box_clone.first_child() {
+                        name_box_clone.remove(&child);
                     }
-                    editing_clone_inner.lock().unwrap().remove(&entry_name);
-                    update_list_box(&list_box_clone, &state_clone.lock().unwrap().entries, Arc::clone(&state_clone), &editing_clone_inner);
-                }));
 
-                edit_entry.grab_focus();
+                    name_box_clone.append(&edit_entry);
+
+                    let edit_entry_clone = edit_entry.clone();
+                    let editing_clone_inner = Arc::clone(&editing_clone);
+                    edit_entry.connect_activate(clone!(@strong state_clone, @strong list_box_clone, @strong entry_name, @strong name_box_clone, @strong edit_entry_clone => move |_| {
+                        let new_name = edit_entry_clone.text().to_string();
+                        if !new_name.is_empty() && new_name != entry_name {
+                            let mut state = state_clone.lock().unwrap();
+                            if let Some(entry) = state.entries.remove(&entry_name) {
+                                let updated_entry = TOTPEntry { name: new_name.clone(), secret: entry.secret };
+                                state.entries.insert(new_name.clone(), updated_entry);
+                                if let Err(e) = storage::save_entries(&state.entries) {
+                                    eprintln!("Failed to save entries: {}", e);
+                                }
+                            }
+                            drop(state);
+                        }
+
+                        while let Some(child) = name_box_clone.first_child() {
+                            name_box_clone.remove(&child);
+                        }
+
+                        let final_name = if new_name.is_empty() || new_name == entry_name {
+                            entry_name.clone()
+                        } else {
+                            new_name
+                        };
+                        let new_label = Label::new(Some(&final_name));
+                        name_box_clone.append(&new_label);
+
+                        editing_clone_inner.lock().unwrap().remove(&entry_name);
+                        update_list_box(&list_box_clone, &state_clone.lock().unwrap().entries, Arc::clone(&state_clone), &editing_clone_inner);
+                    }));
+
+                    edit_entry.grab_focus();
+                }
             });
 
             let gesture = gtk::GestureClick::new();
