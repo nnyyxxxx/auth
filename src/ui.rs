@@ -267,19 +267,15 @@ fn update_list_box(
                 clone!(@strong entry => move |_, _, _, _| {
                     if let Some(display) = Display::default() {
                         let clipboard = display.clipboard();
+                        let current_time = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
                         let current_token = totp::generate_totp(&entry.secret, current_time).unwrap_or_else(|e| {
                             eprintln!("Error generating TOTP for {}: {}", entry.name, e);
                             "Error".to_string()
                         });
-                        let prev_token = totp::generate_totp(&entry.secret, current_time.saturating_sub(30)).unwrap_or_else(|e| {
-                            eprintln!("Error generating previous TOTP for {}: {}", entry.name, e);
-                            "Error".to_string()
-                        });
-                        let next_token = totp::generate_totp(&entry.secret, current_time + 30).unwrap_or_else(|e| {
-                            eprintln!("Error generating next TOTP for {}: {}", entry.name, e);
-                            "Error".to_string()
-                        });
-                        clipboard.set_text(&format!("{} {} {}", prev_token, current_token, next_token));
+                        clipboard.set_text(&current_token);
                     }
                 }),
             );
