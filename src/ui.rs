@@ -10,6 +10,7 @@ use gtk::{
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
 
 pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
     let window = ApplicationWindow::builder()
@@ -55,13 +56,23 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
     button_box.append(&backup_button);
     main_box.append(&button_box);
 
-    let state_clone = Arc::clone(&state);
-    let list_box_clone = list_box.clone();
+    let editing = Arc::new(Mutex::new(HashSet::new()));
+
+    let state_clone_add = Arc::clone(&state);
+    let editing_clone_add = Arc::clone(&editing);
+    let state_clone_import = Arc::clone(&state);
+    let editing_clone_import = Arc::clone(&editing);
+    let state_clone_update = Arc::clone(&state);
+    let editing_clone_update = Arc::clone(&editing);
+    let state_clone_timeout = Arc::clone(&state);
+    let editing_clone_timeout = Arc::clone(&editing);
+
+    let list_box_clone_add = list_box.clone();
     add_button.connect_clicked(move |_| {
         let name = name_entry.text().to_string();
         let secret = secret_entry.text().to_string().replace(" ", "");
         if !name.is_empty() && !secret.is_empty() {
-            let mut state = state_clone.lock().unwrap();
+            let mut state = state_clone_add.lock().unwrap();
             if !state.entries.contains_key(&name) {
                 state.entries.insert(
                     name.clone(),
@@ -75,14 +86,14 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
                 }
                 name_entry.set_text("");
                 secret_entry.set_text("");
-                update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
+                update_list_box(&list_box_clone_add, &state.entries, Arc::clone(&state_clone_add), &editing_clone_add);
             } else {
                 eprintln!("Entry with name '{}' already exists", name);
             }
         }
     });
 
-    let state_clone = Arc::clone(&state);
+    let state_clone_add = Arc::clone(&state);
     let window_clone = window.clone();
     backup_button.connect_clicked(move |_| {
         let file_chooser = gtk::FileChooserDialog::new(
@@ -95,11 +106,11 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
             ],
         );
         file_chooser.set_current_name("authenticator_backup.json");
-        let state_clone = Arc::clone(&state_clone);
+        let state_clone_add = Arc::clone(&state_clone_add);
         file_chooser.connect_response(move |dialog, response| {
             if response == gtk::ResponseType::Accept {
                 if let Some(path) = dialog.file().and_then(|f| f.path()) {
-                    let state = state_clone.lock().unwrap();
+                    let state = state_clone_add.lock().unwrap();
                     if let Err(e) = storage::backup_entries(&state.entries, path) {
                         eprintln!("Failed to backup entries: {}", e);
                     }
@@ -110,9 +121,9 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
         file_chooser.show();
     });
 
-    let state_clone = Arc::clone(&state);
+    let state_clone_import = Arc::clone(&state);
     let window_clone = window.clone();
-    let list_box_clone = list_box.clone();
+    let list_box_clone_import = list_box.clone();
     import_button.connect_clicked(move |_| {
         let file_chooser = gtk::FileChooserDialog::new(
             Some("Import Backup"),
@@ -123,19 +134,21 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
                 ("Open", gtk::ResponseType::Accept),
             ],
         );
-        let state_clone = Arc::clone(&state_clone);
-        let list_box_clone = list_box_clone.clone();
+        let state_clone_inner = Arc::clone(&state_clone_import);
+        let list_box_clone_inner = list_box_clone_import.clone();
+        let editing_clone_inner = Arc::clone(&editing_clone_import);
         file_chooser.connect_response(move |dialog, response| {
             if response == gtk::ResponseType::Accept {
                 if let Some(path) = dialog.file().and_then(|f| f.path()) {
                     match storage::import_entries(path) {
                         Ok(imported_entries) => {
-                            let mut state = state_clone.lock().unwrap();
+                            let mut state = state_clone_inner.lock().unwrap();
                             state.entries.extend(imported_entries);
                             update_list_box(
-                                &list_box_clone,
+                                &list_box_clone_inner,
                                 &state.entries,
-                                Arc::clone(&state_clone),
+                                Arc::clone(&state_clone_inner),
+                                &editing_clone_inner,
                             );
                             if let Err(e) = storage::save_entries(&state.entries) {
                                 eprintln!("Failed to save entries: {}", e);
@@ -150,18 +163,17 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
         file_chooser.show();
     });
 
-    let state_clone = Arc::clone(&state);
     update_list_box(
         &list_box,
-        &state_clone.lock().unwrap().entries,
-        Arc::clone(&state_clone),
+        &state_clone_update.lock().unwrap().entries,
+        Arc::clone(&state_clone_update),
+        &editing_clone_update,
     );
 
-    let state_clone = Arc::clone(&state);
-    let list_box_clone = list_box.clone();
+    let list_box_clone_timeout = list_box.clone();
     glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
-        let state = state_clone.lock().unwrap();
-        update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
+        let state = state_clone_timeout.lock().unwrap();
+        update_list_box(&list_box_clone_timeout, &state.entries, Arc::clone(&state_clone_timeout), &editing_clone_timeout);
         glib::Continue(true)
     });
 
@@ -173,6 +185,7 @@ fn update_list_box(
     list_box: &ListBox,
     entries: &HashMap<String, TOTPEntry>,
     state: Arc<Mutex<AppState>>,
+    editing: &Arc<Mutex<HashSet<String>>>,
 ) {
     let current_time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -182,9 +195,10 @@ fn update_list_box(
     let remaining = 30 - (current_time % 30);
 
     let mut processed_entries = std::collections::HashSet::new();
+    let editing_set = editing.lock().unwrap();
 
     for entry in entries.values() {
-        if processed_entries.contains(&entry.name) {
+        if processed_entries.contains(&entry.name) || editing_set.contains(&entry.name) {
             continue;
         }
         processed_entries.insert(entry.name.clone());
@@ -225,6 +239,7 @@ fn update_list_box(
             let state_clone = Arc::clone(&state);
             let entry_name = entry.name.clone();
             let list_box_clone = list_box.clone();
+            let editing_clone = Arc::clone(&editing);
             remove_button.connect_clicked(move |_| {
                 let mut state = state_clone.lock().unwrap();
                 state.entries.remove(&entry_name);
@@ -232,10 +247,12 @@ fn update_list_box(
                     eprintln!("Failed to save entries: {}", e);
                 }
                 drop(state);
+                editing_clone.lock().unwrap().remove(&entry_name);
                 update_list_box(
                     &list_box_clone,
                     &state_clone.lock().unwrap().entries,
                     Arc::clone(&state_clone),
+                    &editing_clone,
                 );
             });
 
@@ -243,13 +260,16 @@ fn update_list_box(
             let entry_name = entry.name.clone();
             let list_box_clone = list_box.clone();
             let name_box_clone = name_box.clone();
+            let editing_clone = Arc::clone(&editing);
             edit_button.connect_clicked(move |_| {
+                editing_clone.lock().unwrap().insert(entry_name.clone());
                 let edit_entry = Entry::new();
                 edit_entry.set_text(&entry_name);
                 name_box_clone.remove(&name_label);
                 name_box_clone.append(&edit_entry);
 
                 let edit_entry_clone = edit_entry.clone();
+                let editing_clone_inner = Arc::clone(&editing_clone);
                 edit_entry.connect_activate(clone!(@strong state_clone, @strong list_box_clone, @strong entry_name, @strong name_box_clone, @strong edit_entry_clone => move |_| {
                     let new_name = edit_entry_clone.text().to_string();
                     if !new_name.is_empty() && new_name != entry_name {
@@ -271,7 +291,8 @@ fn update_list_box(
                         let original_label = Label::new(Some(&entry_name));
                         name_box_clone.append(&original_label);
                     }
-                    update_list_box(&list_box_clone, &state_clone.lock().unwrap().entries, Arc::clone(&state_clone));
+                    editing_clone_inner.lock().unwrap().remove(&entry_name);
+                    update_list_box(&list_box_clone, &state_clone.lock().unwrap().entries, Arc::clone(&state_clone), &editing_clone_inner);
                 }));
 
                 edit_entry.grab_focus();
