@@ -1,15 +1,18 @@
 use dirs::home_dir;
-use gtk::gdk::Display;
-use gtk::glib::clone;
-use gtk::prelude::*;
 use gtk::{
+    gdk::Display,
+    glib::{self, clone},
+    prelude::*,
     Application, ApplicationWindow, Box as GtkBox, Button, Entry, Label, ListBox, Orientation,
     ScrolledWindow,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use totp_rs::{Secret, TOTP};
 
 #[derive(Serialize, Deserialize, Clone)]
