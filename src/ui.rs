@@ -57,9 +57,7 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
 
     let editing = Arc::new(Mutex::new(HashSet::new()));
 
-    let state_clone_add = Arc::clone(&state);
     let editing_clone_add = Arc::clone(&editing);
-    let state_clone_import = Arc::clone(&state);
     let editing_clone_import = Arc::clone(&editing);
     let state_clone_update = Arc::clone(&state);
     let editing_clone_update = Arc::clone(&editing);
@@ -67,6 +65,7 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
     let editing_clone_timeout = Arc::clone(&editing);
 
     let list_box_clone_add = list_box.clone();
+    let state_clone_add = Arc::clone(&state);
     add_button.connect_clicked(move |_| {
         let name = name_entry.text().to_string();
         let secret = secret_entry.text().to_string().replace(" ", "");
@@ -97,24 +96,24 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
         }
     });
 
-    let state_clone_add = Arc::clone(&state);
-    let window_clone = window.clone();
+    let window_clone_backup = window.clone();
+    let state_clone_backup = Arc::clone(&state);
     backup_button.connect_clicked(move |_| {
         let file_chooser = gtk::FileChooserDialog::new(
             Some("Save Backup"),
-            Some(&window_clone),
+            Some(&window_clone_backup),
             gtk::FileChooserAction::Save,
             &[
                 ("Cancel", gtk::ResponseType::Cancel),
                 ("Save", gtk::ResponseType::Accept),
             ],
         );
+        let state_clone_inner = Arc::clone(&state_clone_backup);
         file_chooser.set_current_name("authenticator_backup.json");
-        let state_clone_add = Arc::clone(&state_clone_add);
         file_chooser.connect_response(move |dialog, response| {
             if response == gtk::ResponseType::Accept {
                 if let Some(path) = dialog.file().and_then(|f| f.path()) {
-                    let state = state_clone_add.lock().unwrap();
+                    let state = state_clone_inner.lock().unwrap();
                     if let Err(e) = storage::backup_entries(&state.entries, path) {
                         eprintln!("Failed to backup entries: {}", e);
                     }
@@ -125,13 +124,13 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
         file_chooser.show();
     });
 
-    let state_clone_import = Arc::clone(&state);
-    let window_clone = window.clone();
     let list_box_clone_import = list_box.clone();
+    let state_clone_import = Arc::clone(&state);
+    let window_clone_import = window.clone();
     import_button.connect_clicked(move |_| {
         let file_chooser = gtk::FileChooserDialog::new(
             Some("Import Backup"),
-            Some(&window_clone),
+            Some(&window_clone_import),
             gtk::FileChooserAction::Open,
             &[
                 ("Cancel", gtk::ResponseType::Cancel),
