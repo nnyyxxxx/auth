@@ -170,80 +170,143 @@ fn update_list_box(
     entries: &HashMap<String, TOTPEntry>,
     state: Arc<Mutex<AppState>>,
 ) {
-    while let Some(child) = list_box.first_child() {
-        list_box.remove(&child);
-    }
-    for entry in entries.values() {
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+    let current_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let remaining = 30 - (current_time % 30);
+
+    for (index, entry) in entries.values().enumerate() {
+        let row = if let Some(existing_row) = list_box.row_at_index(index as i32) {
+            existing_row.child().unwrap().downcast::<GtkBox>().unwrap()
+        } else {
+            let new_row = GtkBox::new(Orientation::Horizontal, 5);
+            new_row.set_hexpand(true);
+            list_box.append(&new_row);
+            new_row
+        };
+
+        if row.first_child().is_none() {
+            let name_box = GtkBox::new(Orientation::Horizontal, 0);
+            let name_label = Label::new(Some(&entry.name));
+            name_box.append(&name_label);
+
+            let token_label = Label::new(None);
+            let remaining_label = Label::new(None);
+
+            let spacer = GtkBox::new(Orientation::Horizontal, 0);
+            spacer.set_hexpand(true);
+
+            let edit_button = Button::with_label("Edit");
+            edit_button.set_valign(gtk::Align::Center);
+
+            let remove_button = Button::with_label("X");
+            remove_button.set_valign(gtk::Align::Center);
+
+            row.append(&name_box);
+            row.append(&token_label);
+            row.append(&remaining_label);
+            row.append(&spacer);
+            row.append(&edit_button);
+            row.append(&remove_button);
+
+            let state_clone = Arc::clone(&state);
+            let entry_name = entry.name.clone();
+            let list_box_clone = list_box.clone();
+            remove_button.connect_clicked(move |_| {
+                let mut state = state_clone.lock().unwrap();
+                state.entries.remove(&entry_name);
+                update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
+                if let Err(e) = storage::save_entries(&state.entries) {
+                    eprintln!("Failed to save entries: {}", e);
+                }
+            });
+
+            let state_clone = Arc::clone(&state);
+            let entry_name = entry.name.clone();
+            let list_box_clone = list_box.clone();
+            let name_box_clone = name_box.clone();
+            edit_button.connect_clicked(move |_| {
+                let edit_entry = Entry::new();
+                edit_entry.set_text(&entry_name);
+                name_box_clone.remove(&name_label);
+                name_box_clone.append(&edit_entry);
+
+                let edit_entry_clone = edit_entry.clone();
+                edit_entry.connect_activate(clone!(@strong state_clone, @strong list_box_clone, @strong entry_name, @strong name_box_clone, @strong edit_entry_clone => move |_| {
+                    let new_name = edit_entry_clone.text().to_string();
+                    if !new_name.is_empty() && new_name != entry_name {
+                        let mut state = state_clone.lock().unwrap();
+                        if let Some(entry) = state.entries.remove(&entry_name) {
+                            let updated_entry = TOTPEntry { name: new_name.clone(), secret: entry.secret };
+                            state.entries.insert(new_name.clone(), updated_entry);
+                            if let Err(e) = storage::save_entries(&state.entries) {
+                                eprintln!("Failed to save entries: {}", e);
+                            }
+                        }
+                        drop(state);
+
+                        name_box_clone.remove(&edit_entry_clone);
+                        let new_label = Label::new(Some(&new_name));
+                        name_box_clone.append(&new_label);
+                    } else {
+                        name_box_clone.remove(&edit_entry_clone);
+                        let original_label = Label::new(Some(&entry_name));
+                        name_box_clone.append(&original_label);
+                    }
+                    update_list_box(&list_box_clone, &state_clone.lock().unwrap().entries, Arc::clone(&state_clone));
+                }));
+
+                edit_entry.grab_focus();
+            });
+
+            let gesture = gtk::GestureClick::new();
+            gesture.set_button(1);
+            gesture.connect_released(
+                clone!(@strong entry => move |_, _, _, _| {
+                    if let Some(display) = Display::default() {
+                        let clipboard = display.clipboard();
+                        let current_time = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
+                        let current_token = totp::generate_totp(&entry.secret, current_time).unwrap_or_else(|e| {
+                            eprintln!("Error generating TOTP for {}: {}", entry.name, e);
+                            "Error".to_string()
+                        });
+                        clipboard.set_text(&current_token);
+                    }
+                }),
+            );
+            row.add_controller(&gesture);
+        }
 
         let current_token = totp::generate_totp(&entry.secret, current_time).unwrap_or_else(|e| {
             eprintln!("Error generating TOTP for {}: {}", entry.name, e);
             "Error".to_string()
         });
-        let prev_token = totp::generate_totp(&entry.secret, current_time.saturating_sub(30))
-            .unwrap_or_else(|e| {
-                eprintln!("Error generating previous TOTP for {}: {}", entry.name, e);
-                "Error".to_string()
-            });
-        let next_token =
-            totp::generate_totp(&entry.secret, current_time + 30).unwrap_or_else(|e| {
-                eprintln!("Error generating next TOTP for {}: {}", entry.name, e);
-                "Error".to_string()
-            });
 
-        let remaining = 30
-            - (std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs()
-                % 30);
-
-        let row = GtkBox::new(Orientation::Horizontal, 5);
-        row.set_hexpand(true);
-
-        let name_label = Label::new(Some(&entry.name));
-        let token_label = Label::new(Some(&current_token));
-        let remaining_label = Label::new(Some(&format!("{}s", remaining)));
-
-        let spacer = GtkBox::new(Orientation::Horizontal, 0);
-        spacer.set_hexpand(true);
-
-        let remove_button = Button::with_label("X");
-        remove_button.set_valign(gtk::Align::Center);
-
-        let state_clone = Arc::clone(&state);
-        let entry_name = entry.name.clone();
-        let list_box_clone = list_box.clone();
-        remove_button.connect_clicked(move |_| {
-            let mut state = state_clone.lock().unwrap();
-            state.entries.remove(&entry_name);
-            update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
-            if let Err(e) = storage::save_entries(&state.entries) {
-                eprintln!("Failed to save entries: {}", e);
+        if let Some(token_label) = row.first_child().and_then(|c| c.next_sibling()) {
+            if let Ok(label) = token_label.downcast::<Label>() {
+                label.set_label(&current_token);
             }
-        });
+        }
 
-        row.append(&name_label);
-        row.append(&token_label);
-        row.append(&remaining_label);
-        row.append(&spacer);
-        row.append(&remove_button);
+        if let Some(remaining_label) = row
+            .first_child()
+            .and_then(|c| c.next_sibling())
+            .and_then(|c| c.next_sibling())
+        {
+            if let Ok(label) = remaining_label.downcast::<Label>() {
+                label.set_label(&format!("{}s", remaining));
+            }
+        }
+    }
 
-        let gesture = gtk::GestureClick::new();
-        gesture.set_button(1);
-        gesture.connect_released(
-            clone!(@strong current_token, @strong prev_token, @strong next_token => move |_, _, _, _| {
-                if let Some(display) = Display::default() {
-                    let clipboard = display.clipboard();
-                    clipboard.set_text(&format!("{} {} {}", prev_token, current_token, next_token));
-                }
-            }),
-        );
-        row.add_controller(&gesture);
-
-        list_box.append(&row);
+    while list_box.row_at_index(entries.len() as i32).is_some() {
+        if let Some(row) = list_box.row_at_index(entries.len() as i32) {
+            list_box.remove(&row);
+        }
     }
 }
