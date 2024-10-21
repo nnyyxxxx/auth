@@ -8,7 +8,7 @@ use gtk::{
     Application, ApplicationWindow, Box as GtkBox, Button, Entry, Label, ListBox, Orientation,
     ScrolledWindow,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
@@ -55,13 +55,22 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
     button_box.append(&backup_button);
     main_box.append(&button_box);
 
-    let state_clone = Arc::clone(&state);
-    let list_box_clone = list_box.clone();
+    let editing = Arc::new(Mutex::new(HashSet::new()));
+
+    let editing_clone_add = Arc::clone(&editing);
+    let editing_clone_import = Arc::clone(&editing);
+    let state_clone_update = Arc::clone(&state);
+    let editing_clone_update = Arc::clone(&editing);
+    let state_clone_timeout = Arc::clone(&state);
+    let editing_clone_timeout = Arc::clone(&editing);
+
+    let list_box_clone_add = list_box.clone();
+    let state_clone_add = Arc::clone(&state);
     add_button.connect_clicked(move |_| {
         let name = name_entry.text().to_string();
         let secret = secret_entry.text().to_string().replace(" ", "");
         if !name.is_empty() && !secret.is_empty() {
-            let mut state = state_clone.lock().unwrap();
+            let mut state = state_clone_add.lock().unwrap();
             if !state.entries.contains_key(&name) {
                 state.entries.insert(
                     name.clone(),
@@ -75,31 +84,36 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
                 }
                 name_entry.set_text("");
                 secret_entry.set_text("");
-                update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
+                update_list_box(
+                    &list_box_clone_add,
+                    &state.entries,
+                    Arc::clone(&state_clone_add),
+                    &editing_clone_add,
+                );
             } else {
                 eprintln!("Entry with name '{}' already exists", name);
             }
         }
     });
 
-    let state_clone = Arc::clone(&state);
-    let window_clone = window.clone();
+    let window_clone_backup = window.clone();
+    let state_clone_backup = Arc::clone(&state);
     backup_button.connect_clicked(move |_| {
         let file_chooser = gtk::FileChooserDialog::new(
             Some("Save Backup"),
-            Some(&window_clone),
+            Some(&window_clone_backup),
             gtk::FileChooserAction::Save,
             &[
                 ("Cancel", gtk::ResponseType::Cancel),
                 ("Save", gtk::ResponseType::Accept),
             ],
         );
+        let state_clone_inner = Arc::clone(&state_clone_backup);
         file_chooser.set_current_name("authenticator_backup.json");
-        let state_clone = Arc::clone(&state_clone);
         file_chooser.connect_response(move |dialog, response| {
             if response == gtk::ResponseType::Accept {
                 if let Some(path) = dialog.file().and_then(|f| f.path()) {
-                    let state = state_clone.lock().unwrap();
+                    let state = state_clone_inner.lock().unwrap();
                     if let Err(e) = storage::backup_entries(&state.entries, path) {
                         eprintln!("Failed to backup entries: {}", e);
                     }
@@ -110,32 +124,34 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
         file_chooser.show();
     });
 
-    let state_clone = Arc::clone(&state);
-    let window_clone = window.clone();
-    let list_box_clone = list_box.clone();
+    let list_box_clone_import = list_box.clone();
+    let state_clone_import = Arc::clone(&state);
+    let window_clone_import = window.clone();
     import_button.connect_clicked(move |_| {
         let file_chooser = gtk::FileChooserDialog::new(
             Some("Import Backup"),
-            Some(&window_clone),
+            Some(&window_clone_import),
             gtk::FileChooserAction::Open,
             &[
                 ("Cancel", gtk::ResponseType::Cancel),
                 ("Open", gtk::ResponseType::Accept),
             ],
         );
-        let state_clone = Arc::clone(&state_clone);
-        let list_box_clone = list_box_clone.clone();
+        let state_clone_inner = Arc::clone(&state_clone_import);
+        let list_box_clone_inner = list_box_clone_import.clone();
+        let editing_clone_inner = Arc::clone(&editing_clone_import);
         file_chooser.connect_response(move |dialog, response| {
             if response == gtk::ResponseType::Accept {
                 if let Some(path) = dialog.file().and_then(|f| f.path()) {
                     match storage::import_entries(path) {
                         Ok(imported_entries) => {
-                            let mut state = state_clone.lock().unwrap();
+                            let mut state = state_clone_inner.lock().unwrap();
                             state.entries.extend(imported_entries);
                             update_list_box(
-                                &list_box_clone,
+                                &list_box_clone_inner,
                                 &state.entries,
-                                Arc::clone(&state_clone),
+                                Arc::clone(&state_clone_inner),
+                                &editing_clone_inner,
                             );
                             if let Err(e) = storage::save_entries(&state.entries) {
                                 eprintln!("Failed to save entries: {}", e);
@@ -150,18 +166,22 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
         file_chooser.show();
     });
 
-    let state_clone = Arc::clone(&state);
     update_list_box(
         &list_box,
-        &state_clone.lock().unwrap().entries,
-        Arc::clone(&state_clone),
+        &state_clone_update.lock().unwrap().entries,
+        Arc::clone(&state_clone_update),
+        &editing_clone_update,
     );
 
-    let state_clone = Arc::clone(&state);
-    let list_box_clone = list_box.clone();
+    let list_box_clone_timeout = list_box.clone();
     glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
-        let state = state_clone.lock().unwrap();
-        update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
+        let state = state_clone_timeout.lock().unwrap();
+        update_list_box(
+            &list_box_clone_timeout,
+            &state.entries,
+            Arc::clone(&state_clone_timeout),
+            &editing_clone_timeout,
+        );
         glib::Continue(true)
     });
 
@@ -173,6 +193,7 @@ fn update_list_box(
     list_box: &ListBox,
     entries: &HashMap<String, TOTPEntry>,
     state: Arc<Mutex<AppState>>,
+    editing: &Arc<Mutex<HashSet<String>>>,
 ) {
     let current_time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -181,9 +202,17 @@ fn update_list_box(
 
     let remaining = 30 - (current_time % 30);
 
-    for (index, entry) in entries.values().enumerate() {
-        let row = if let Some(existing_row) = list_box.row_at_index(index as i32) {
-            existing_row.child().unwrap().downcast::<GtkBox>().unwrap()
+    let mut processed_entries = std::collections::HashSet::new();
+    let editing_set = editing.lock().unwrap();
+
+    for entry in entries.values() {
+        if processed_entries.contains(&entry.name) || editing_set.contains(&entry.name) {
+            continue;
+        }
+        processed_entries.insert(entry.name.clone());
+
+        let row = if let Some(existing_row) = find_row_by_name(list_box, &entry.name) {
+            existing_row
         } else {
             let new_row = GtkBox::new(Orientation::Horizontal, 5);
             new_row.set_hexpand(true);
@@ -218,51 +247,75 @@ fn update_list_box(
             let state_clone = Arc::clone(&state);
             let entry_name = entry.name.clone();
             let list_box_clone = list_box.clone();
+            let editing_clone = Arc::clone(editing);
             remove_button.connect_clicked(move |_| {
                 let mut state = state_clone.lock().unwrap();
                 state.entries.remove(&entry_name);
-                update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
                 if let Err(e) = storage::save_entries(&state.entries) {
                     eprintln!("Failed to save entries: {}", e);
                 }
+                drop(state);
+                editing_clone.lock().unwrap().remove(&entry_name);
+                update_list_box(
+                    &list_box_clone,
+                    &state_clone.lock().unwrap().entries,
+                    Arc::clone(&state_clone),
+                    &editing_clone,
+                );
             });
 
             let state_clone = Arc::clone(&state);
             let entry_name = entry.name.clone();
             let list_box_clone = list_box.clone();
             let name_box_clone = name_box.clone();
+            let editing_clone = Arc::clone(editing);
             edit_button.connect_clicked(move |_| {
-                let edit_entry = Entry::new();
-                edit_entry.set_text(&entry_name);
-                name_box_clone.remove(&name_label);
-                name_box_clone.append(&edit_entry);
+                let mut editing_set = editing_clone.lock().unwrap();
+                if !editing_set.contains(&entry_name) {
+                    editing_set.insert(entry_name.clone());
+                    let edit_entry = Entry::new();
+                    edit_entry.set_text(&entry_name);
 
-                let edit_entry_clone = edit_entry.clone();
-                edit_entry.connect_activate(clone!(@strong state_clone, @strong list_box_clone, @strong entry_name, @strong name_box_clone, @strong edit_entry_clone => move |_| {
-                    let new_name = edit_entry_clone.text().to_string();
-                    if !new_name.is_empty() && new_name != entry_name {
-                        let mut state = state_clone.lock().unwrap();
-                        if let Some(entry) = state.entries.remove(&entry_name) {
-                            let updated_entry = TOTPEntry { name: new_name.clone(), secret: entry.secret };
-                            state.entries.insert(new_name.clone(), updated_entry);
-                            if let Err(e) = storage::save_entries(&state.entries) {
-                                eprintln!("Failed to save entries: {}", e);
-                            }
-                        }
-                        drop(state);
-
-                        name_box_clone.remove(&edit_entry_clone);
-                        let new_label = Label::new(Some(&new_name));
-                        name_box_clone.append(&new_label);
-                    } else {
-                        name_box_clone.remove(&edit_entry_clone);
-                        let original_label = Label::new(Some(&entry_name));
-                        name_box_clone.append(&original_label);
+                    while let Some(child) = name_box_clone.first_child() {
+                        name_box_clone.remove(&child);
                     }
-                    update_list_box(&list_box_clone, &state_clone.lock().unwrap().entries, Arc::clone(&state_clone));
-                }));
 
-                edit_entry.grab_focus();
+                    name_box_clone.append(&edit_entry);
+
+                    let edit_entry_clone = edit_entry.clone();
+                    let editing_clone_inner = Arc::clone(&editing_clone);
+                    edit_entry.connect_activate(clone!(@strong state_clone, @strong list_box_clone, @strong entry_name, @strong name_box_clone, @strong edit_entry_clone => move |_| {
+                        let new_name = edit_entry_clone.text().to_string();
+                        if !new_name.is_empty() && new_name != entry_name {
+                            let mut state = state_clone.lock().unwrap();
+                            if let Some(entry) = state.entries.remove(&entry_name) {
+                                let updated_entry = TOTPEntry { name: new_name.clone(), secret: entry.secret };
+                                state.entries.insert(new_name.clone(), updated_entry);
+                                if let Err(e) = storage::save_entries(&state.entries) {
+                                    eprintln!("Failed to save entries: {}", e);
+                                }
+                            }
+                            drop(state);
+                        }
+
+                        while let Some(child) = name_box_clone.first_child() {
+                            name_box_clone.remove(&child);
+                        }
+
+                        let final_name = if new_name.is_empty() || new_name == entry_name {
+                            entry_name.clone()
+                        } else {
+                            new_name
+                        };
+                        let new_label = Label::new(Some(&final_name));
+                        name_box_clone.append(&new_label);
+
+                        editing_clone_inner.lock().unwrap().remove(&entry_name);
+                        update_list_box(&list_box_clone, &state_clone.lock().unwrap().entries, Arc::clone(&state_clone), &editing_clone_inner);
+                    }));
+
+                    edit_entry.grab_focus();
+                }
             });
 
             let gesture = gtk::GestureClick::new();
@@ -311,9 +364,39 @@ fn update_list_box(
         }
     }
 
-    while list_box.row_at_index(entries.len() as i32).is_some() {
-        if let Some(row) = list_box.row_at_index(entries.len() as i32) {
-            list_box.remove(&row);
+    remove_unused_rows(list_box, &processed_entries);
+}
+
+fn find_row_by_name(list_box: &ListBox, name: &str) -> Option<GtkBox> {
+    let mut index = 0;
+    while let Some(row) = list_box.row_at_index(index) {
+        if let Some(box_widget) = row.child() {
+            if let Some(label_widget) = box_widget.first_child().and_then(|c| c.first_child()) {
+                if let Some(label) = label_widget.downcast_ref::<gtk::Label>() {
+                    if label.text() == name {
+                        return box_widget.downcast::<GtkBox>().ok();
+                    }
+                }
+            }
         }
+        index += 1;
+    }
+    None
+}
+
+fn remove_unused_rows(list_box: &ListBox, processed_entries: &HashSet<String>) {
+    let mut index = 0;
+    while let Some(row) = list_box.row_at_index(index) {
+        if let Some(box_widget) = row.child() {
+            if let Some(label_widget) = box_widget.first_child().and_then(|c| c.first_child()) {
+                if let Some(label) = label_widget.downcast_ref::<gtk::Label>() {
+                    if !processed_entries.contains(&label.text().to_string()) {
+                        list_box.remove(&row);
+                        continue;
+                    }
+                }
+            }
+        }
+        index += 1;
     }
 }
