@@ -247,7 +247,7 @@ fn update_list_box(
             let state_clone = Arc::clone(&state);
             let entry_name = entry.name.clone();
             let list_box_clone = list_box.clone();
-            let editing_clone = Arc::clone(&editing);
+            let editing_clone = Arc::clone(editing);
             remove_button.connect_clicked(move |_| {
                 let mut state = state_clone.lock().unwrap();
                 state.entries.remove(&entry_name);
@@ -268,7 +268,7 @@ fn update_list_box(
             let entry_name = entry.name.clone();
             let list_box_clone = list_box.clone();
             let name_box_clone = name_box.clone();
-            let editing_clone = Arc::clone(&editing);
+            let editing_clone = Arc::clone(editing);
             edit_button.connect_clicked(move |_| {
                 editing_clone.lock().unwrap().insert(entry_name.clone());
                 let edit_entry = Entry::new();
