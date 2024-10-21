@@ -10,7 +10,6 @@ use gtk::{
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::cell::RefCell;
 
 pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
     let window = ApplicationWindow::builder()
@@ -86,7 +85,12 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
                 }
                 name_entry.set_text("");
                 secret_entry.set_text("");
-                update_list_box(&list_box_clone_add, &state.entries, Arc::clone(&state_clone_add), &editing_clone_add);
+                update_list_box(
+                    &list_box_clone_add,
+                    &state.entries,
+                    Arc::clone(&state_clone_add),
+                    &editing_clone_add,
+                );
             } else {
                 eprintln!("Entry with name '{}' already exists", name);
             }
@@ -173,7 +177,12 @@ pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
     let list_box_clone_timeout = list_box.clone();
     glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
         let state = state_clone_timeout.lock().unwrap();
-        update_list_box(&list_box_clone_timeout, &state.entries, Arc::clone(&state_clone_timeout), &editing_clone_timeout);
+        update_list_box(
+            &list_box_clone_timeout,
+            &state.entries,
+            Arc::clone(&state_clone_timeout),
+            &editing_clone_timeout,
+        );
         glib::Continue(true)
     });
 
