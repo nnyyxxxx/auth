@@ -202,7 +202,17 @@ fn update_list_box(
                 .unwrap(),
         )
         .unwrap();
-        let token = totp.generate_current().unwrap();
+
+        let current_token = totp.generate_current().unwrap();
+        let next_token = totp.generate(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                / 30
+                + 1,
+        );
+
         let remaining = 30
             - (std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -214,7 +224,7 @@ fn update_list_box(
         row.set_hexpand(true);
 
         let name_label = Label::new(Some(&entry.name));
-        let token_label = Label::new(Some(&token));
+        let token_label = Label::new(Some(&current_token));
         let remaining_label = Label::new(Some(&format!("{}s", remaining)));
 
         let spacer = GtkBox::new(Orientation::Horizontal, 0);
@@ -241,12 +251,14 @@ fn update_list_box(
 
         let gesture = gtk::GestureClick::new();
         gesture.set_button(1);
-        gesture.connect_released(clone!(@strong token => move |_, _, _, _| {
-            if let Some(display) = Display::default() {
-                let clipboard = display.clipboard();
-                clipboard.set_text(&token);
-            }
-        }));
+        gesture.connect_released(
+            clone!(@strong current_token, @strong next_token => move |_, _, _, _| {
+                if let Some(display) = Display::default() {
+                    let clipboard = display.clipboard();
+                    clipboard.set_text(&format!("{} {}", current_token, next_token));
+                }
+            }),
+        );
         row.add_controller(&gesture);
 
         list_box.append(&row);
