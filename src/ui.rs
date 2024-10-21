@@ -204,12 +204,18 @@ fn update_list_box(
         let row = GtkBox::new(Orientation::Horizontal, 5);
         row.set_hexpand(true);
 
+        let name_box = GtkBox::new(Orientation::Horizontal, 0);
         let name_label = Label::new(Some(&entry.name));
+        name_box.append(&name_label);
+
         let token_label = Label::new(Some(&current_token));
         let remaining_label = Label::new(Some(&format!("{}s", remaining)));
 
         let spacer = GtkBox::new(Orientation::Horizontal, 0);
         spacer.set_hexpand(true);
+
+        let edit_button = Button::with_label("Edit");
+        edit_button.set_valign(gtk::Align::Center);
 
         let remove_button = Button::with_label("X");
         remove_button.set_valign(gtk::Align::Center);
@@ -226,10 +232,39 @@ fn update_list_box(
             }
         });
 
-        row.append(&name_label);
+        let state_clone = Arc::clone(&state);
+        let entry_name = entry.name.clone();
+        let list_box_clone = list_box.clone();
+        let name_box_clone = name_box.clone();
+        edit_button.connect_clicked(move |_| {
+            let edit_entry = Entry::new();
+            edit_entry.set_text(&entry_name);
+            name_box_clone.remove(&name_label);
+            name_box_clone.append(&edit_entry);
+
+            edit_entry.connect_activate(clone!(@strong state_clone, @strong list_box_clone, @strong entry_name => move |e| {
+                let new_name = e.text().to_string();
+                if !new_name.is_empty() && new_name != entry_name {
+                    let mut state = state_clone.lock().unwrap();
+                    if let Some(entry) = state.entries.remove(&entry_name) {
+                        let updated_entry = TOTPEntry { name: new_name.clone(), secret: entry.secret };
+                        state.entries.insert(new_name, updated_entry);
+                        if let Err(e) = storage::save_entries(&state.entries) {
+                            eprintln!("Failed to save entries: {}", e);
+                        }
+                    }
+                }
+                update_list_box(&list_box_clone, &state_clone.lock().unwrap().entries, Arc::clone(&state_clone));
+            }));
+
+            edit_entry.grab_focus();
+        });
+
+        row.append(&name_box);
         row.append(&token_label);
         row.append(&remaining_label);
         row.append(&spacer);
+        row.append(&edit_button);
         row.append(&remove_button);
 
         let gesture = gtk::GestureClick::new();
