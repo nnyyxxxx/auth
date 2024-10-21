@@ -1,3 +1,4 @@
+use dirs::home_dir;
 use gtk::gdk::Display;
 use gtk::glib::clone;
 use gtk::prelude::*;
@@ -7,6 +8,7 @@ use gtk::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use totp_rs::{Secret, TOTP};
 
@@ -91,7 +93,9 @@ fn build_ui(app: &Application) {
                     secret,
                 },
             );
-            save_entries(&state.entries).unwrap();
+            if let Err(e) = save_entries(&state.entries) {
+                eprintln!("Failed to save entries: {}", e);
+            }
             name_entry.set_text("");
             secret_entry.set_text("");
             update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
@@ -148,12 +152,14 @@ fn build_ui(app: &Application) {
                         Ok(imported_entries) => {
                             let mut state = state_clone.lock().unwrap();
                             state.entries.extend(imported_entries);
-                            save_entries(&state.entries).unwrap();
                             update_list_box(
                                 &list_box_clone,
                                 &state.entries,
                                 Arc::clone(&state_clone),
                             );
+                            if let Err(e) = save_entries(&state.entries) {
+                                eprintln!("Failed to save entries: {}", e);
+                            }
                         }
                         Err(e) => eprintln!("Failed to import entries: {}", e),
                     }
@@ -236,8 +242,10 @@ fn update_list_box(
         remove_button.connect_clicked(move |_| {
             let mut state = state_clone.lock().unwrap();
             state.entries.remove(&entry_name);
-            save_entries(&state.entries).unwrap();
             update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
+            if let Err(e) = save_entries(&state.entries) {
+                eprintln!("Failed to save entries: {}", e);
+            }
         });
 
         row.append(&name_label);
@@ -263,13 +271,19 @@ fn update_list_box(
 }
 
 fn load_entries() -> Result<HashMap<String, TOTPEntry>, Box<dyn std::error::Error>> {
-    let data = std::fs::read_to_string("entries.json")?;
-    Ok(serde_json::from_str(&data)?)
+    let path = get_config_file_path();
+    if path.exists() {
+        let data = std::fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&data)?)
+    } else {
+        Ok(HashMap::new())
+    }
 }
 
 fn save_entries(entries: &HashMap<String, TOTPEntry>) -> Result<(), Box<dyn std::error::Error>> {
     let data = serde_json::to_string(entries)?;
-    std::fs::write("entries.json", data)?;
+    let path = get_config_file_path();
+    std::fs::write(path, data)?;
     Ok(())
 }
 
@@ -287,4 +301,13 @@ fn import_entries(
 ) -> Result<HashMap<String, TOTPEntry>, Box<dyn std::error::Error>> {
     let data = std::fs::read_to_string(path)?;
     Ok(serde_json::from_str(&data)?)
+}
+
+fn get_config_file_path() -> PathBuf {
+    let mut path = home_dir().unwrap_or_else(|| PathBuf::from("."));
+    path.push(".config");
+    path.push("authenticatorapp");
+    std::fs::create_dir_all(&path).unwrap();
+    path.push("entries.json");
+    path
 }
