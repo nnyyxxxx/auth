@@ -233,17 +233,27 @@ fn update_list_box(
                 name_box_clone.remove(&name_label);
                 name_box_clone.append(&edit_entry);
 
-                edit_entry.connect_activate(clone!(@strong state_clone, @strong list_box_clone, @strong entry_name => move |e| {
-                    let new_name = e.text().to_string();
+                let edit_entry_clone = edit_entry.clone();
+                edit_entry.connect_activate(clone!(@strong state_clone, @strong list_box_clone, @strong entry_name, @strong name_box_clone, @strong edit_entry_clone => move |_| {
+                    let new_name = edit_entry_clone.text().to_string();
                     if !new_name.is_empty() && new_name != entry_name {
                         let mut state = state_clone.lock().unwrap();
                         if let Some(entry) = state.entries.remove(&entry_name) {
                             let updated_entry = TOTPEntry { name: new_name.clone(), secret: entry.secret };
-                            state.entries.insert(new_name, updated_entry);
+                            state.entries.insert(new_name.clone(), updated_entry);
                             if let Err(e) = storage::save_entries(&state.entries) {
                                 eprintln!("Failed to save entries: {}", e);
                             }
                         }
+                        drop(state);
+
+                        name_box_clone.remove(&edit_entry_clone);
+                        let new_label = Label::new(Some(&new_name));
+                        name_box_clone.append(&new_label);
+                    } else {
+                        name_box_clone.remove(&edit_entry_clone);
+                        let original_label = Label::new(Some(&entry_name));
+                        name_box_clone.append(&original_label);
                     }
                     update_list_box(&list_box_clone, &state_clone.lock().unwrap().entries, Arc::clone(&state_clone));
                 }));
