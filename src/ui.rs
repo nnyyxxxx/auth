@@ -8,7 +8,7 @@ use gtk::{
     Application, ApplicationWindow, Box as GtkBox, Button, Entry, Label, ListBox, Orientation,
     ScrolledWindow,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 pub fn build_ui(app: &Application, state: Arc<Mutex<AppState>>) {
@@ -181,9 +181,16 @@ fn update_list_box(
 
     let remaining = 30 - (current_time % 30);
 
-    for (index, entry) in entries.values().enumerate() {
-        let row = if let Some(existing_row) = list_box.row_at_index(index as i32) {
-            existing_row.child().unwrap().downcast::<GtkBox>().unwrap()
+    let mut processed_entries = std::collections::HashSet::new();
+
+    for entry in entries.values() {
+        if processed_entries.contains(&entry.name) {
+            continue;
+        }
+        processed_entries.insert(entry.name.clone());
+
+        let row = if let Some(existing_row) = find_row_by_name(list_box, &entry.name) {
+            existing_row
         } else {
             let new_row = GtkBox::new(Orientation::Horizontal, 5);
             new_row.set_hexpand(true);
@@ -221,10 +228,15 @@ fn update_list_box(
             remove_button.connect_clicked(move |_| {
                 let mut state = state_clone.lock().unwrap();
                 state.entries.remove(&entry_name);
-                update_list_box(&list_box_clone, &state.entries, Arc::clone(&state_clone));
                 if let Err(e) = storage::save_entries(&state.entries) {
                     eprintln!("Failed to save entries: {}", e);
                 }
+                drop(state);
+                update_list_box(
+                    &list_box_clone,
+                    &state_clone.lock().unwrap().entries,
+                    Arc::clone(&state_clone),
+                );
             });
 
             let state_clone = Arc::clone(&state);
@@ -311,9 +323,39 @@ fn update_list_box(
         }
     }
 
-    while list_box.row_at_index(entries.len() as i32).is_some() {
-        if let Some(row) = list_box.row_at_index(entries.len() as i32) {
-            list_box.remove(&row);
+    remove_unused_rows(list_box, &processed_entries);
+}
+
+fn find_row_by_name(list_box: &ListBox, name: &str) -> Option<GtkBox> {
+    let mut index = 0;
+    while let Some(row) = list_box.row_at_index(index) {
+        if let Some(box_widget) = row.child() {
+            if let Some(label_widget) = box_widget.first_child().and_then(|c| c.first_child()) {
+                if let Some(label) = label_widget.downcast_ref::<gtk::Label>() {
+                    if label.text() == name {
+                        return box_widget.downcast::<GtkBox>().ok();
+                    }
+                }
+            }
         }
+        index += 1;
+    }
+    None
+}
+
+fn remove_unused_rows(list_box: &ListBox, processed_entries: &HashSet<String>) {
+    let mut index = 0;
+    while let Some(row) = list_box.row_at_index(index) {
+        if let Some(box_widget) = row.child() {
+            if let Some(label_widget) = box_widget.first_child().and_then(|c| c.first_child()) {
+                if let Some(label) = label_widget.downcast_ref::<gtk::Label>() {
+                    if !processed_entries.contains(&label.text().to_string()) {
+                        list_box.remove(&row);
+                        continue;
+                    }
+                }
+            }
+        }
+        index += 1;
     }
 }
