@@ -85,7 +85,6 @@ pub const SIZE_WARNING: &[&str] = &[
     "Width = {} Height = {}",
 ];
 
-pub const HELP_TEXT: &str =
-    "a: add  E: edit  d: del  i: import  e: export  ↑/k: up  ↓/j: down  enter: copy  q: quit  tab: cycle fields";
+pub const HELP_TEXT: &str = "a: add  E: edit  d: del  i: import  e: export  ↑/k: up  ↓/j: down  enter: copy  q: quit  tab: cycle fields";
 
 pub const LINUX_WARNING: &[&str] = &["Only Linux is supported", "", "Press any key to exit"];

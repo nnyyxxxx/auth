@@ -1,8 +1,8 @@
 use crate::{
+    AuthResult,
     input::event::poll_event,
     ui::layout::centered_rect,
     utils::constants::{POPUP_HEIGHT_PERCENT, POPUP_WIDTH_PERCENT, ROOT_WARNING, WARNING_TITLE},
-    AuthResult,
 };
 use nix::unistd::Uid;
 use ratatui::{
