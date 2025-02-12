@@ -1,8 +1,8 @@
 use crate::{
+    AuthResult,
     input::event::poll_event,
     ui::layout::centered_rect,
     utils::constants::{LINUX_WARNING, POPUP_HEIGHT_PERCENT, POPUP_WIDTH_PERCENT, WARNING_TITLE},
-    AuthResult,
 };
 use ratatui::{
     crossterm::event::Event,

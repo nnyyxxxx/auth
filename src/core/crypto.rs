@@ -1,5 +1,5 @@
-use crate::{utils::constants::KEY_FILE, AuthError, AuthResult};
-use age::{secrecy::ExposeSecret, x25519::Identity, Encryptor};
+use crate::{AuthError, AuthResult, utils::constants::KEY_FILE};
+use age::{Encryptor, secrecy::ExposeSecret, x25519::Identity};
 use std::{fs, io::Write, path::Path, str::FromStr};
 
 pub struct Crypto {

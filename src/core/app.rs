@@ -1,4 +1,5 @@
 use crate::{
+    AuthError, AuthResult,
     core::{
         crypto::Crypto,
         entry::{Entries, Entry},
@@ -12,7 +13,6 @@ use crate::{
             SINGLE_CHAR_PATH, TOML_EXT,
         },
     },
-    AuthError, AuthResult,
 };
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use std::{

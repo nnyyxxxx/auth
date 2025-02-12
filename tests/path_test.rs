@@ -18,7 +18,9 @@ fn test_home_path_expansion() {
 #[test]
 fn test_env_var_expansion() {
     let app = App::new().unwrap();
-    env::set_var(TEST_ENV_VAR, TEST_ENV_PATH);
+    unsafe {
+        env::set_var(TEST_ENV_VAR, TEST_ENV_PATH);
+    }
 
     let result = app.expand_path(&format!("${}/{}", TEST_ENV_VAR, TEST_ENV_FILE));
     assert_eq!(
