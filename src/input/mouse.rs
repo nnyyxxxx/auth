@@ -1,5 +1,5 @@
 use crate::{
-    core::app::App,
+    auth_core::app::App,
     utils::{constants::FIRST_ENTRY_ROW, error::AuthResult},
 };
 use ratatui::crossterm::event::{MouseEvent, MouseEventKind};

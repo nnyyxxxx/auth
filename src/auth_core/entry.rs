@@ -1,5 +1,5 @@
 use crate::{
-    core::totp::generate_totp,
+    auth_core::totp::generate_totp,
     utils::constants::{INVALID_LABEL, INVALID_REMAINING_TIME},
 };
 use serde::{Deserialize, Serialize};

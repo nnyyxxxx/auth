@@ -1,5 +1,5 @@
 use crate::{
-    core::{
+    auth_core::{
         crypto::Crypto,
         entry::{Entries, Entry},
     },
