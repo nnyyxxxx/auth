@@ -1,5 +1,5 @@
 use auth::{
-    core::app::App,
+    auth_core::app::App,
     utils::constants::{
         TEST_ABSOLUTE_PATH, TEST_ENV_FILE, TEST_ENV_PATH, TEST_ENV_VAR, TEST_HOME_FILE,
     },
