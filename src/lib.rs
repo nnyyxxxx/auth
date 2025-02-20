@@ -1,4 +1,4 @@
-pub mod core {
+pub mod auth_core {
     pub mod app;
     pub mod crypto;
     pub mod entry;
@@ -27,5 +27,5 @@ pub mod ui {
     pub mod size;
 }
 
-pub use core::app::App;
+pub use auth_core::app::App;
 pub use utils::error::{AuthError, AuthResult};

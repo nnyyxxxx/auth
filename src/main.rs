@@ -1,5 +1,5 @@
 use auth::{
-    core::app::App,
+    auth_core::app::App,
     input::{event, linux, root},
     ui::core::draw,
     utils::{cli, error::AuthResult},

@@ -1,6 +1,6 @@
 use crate::{
     AuthError, AuthResult,
-    core::{
+    auth_core::{
         crypto::Crypto,
         entry::{Entries, Entry},
     },

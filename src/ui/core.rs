@@ -1,5 +1,5 @@
 use crate::{
-    core::{
+    auth_core::{
         app::{App, InputMode},
         entry::Entry,
     },
