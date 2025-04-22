@@ -5,7 +5,7 @@
 #include <iostream>
 #include <libsecret/secret.h>
 
-const char* CSecretStorage::schemaName = "com.github.nnyyxxxx.auth.totp";
+const char* CSecretStorage::m_schemaName = "com.github.nnyyxxxx.auth.totp";
 
 CSecretStorage::CSecretStorage() {
     initSchema();
@@ -19,7 +19,7 @@ CSecretStorage::~CSecretStorage() {
 }
 
 void CSecretStorage::initSchema() {
-    SecretSchema* schema = secret_schema_new(schemaName, SECRET_SCHEMA_NONE, "name", SECRET_SCHEMA_ATTRIBUTE_STRING, "id", SECRET_SCHEMA_ATTRIBUTE_STRING, NULL);
+    SecretSchema* schema = secret_schema_new(m_schemaName, SECRET_SCHEMA_NONE, "name", SECRET_SCHEMA_ATTRIBUTE_STRING, "id", SECRET_SCHEMA_ATTRIBUTE_STRING, NULL);
     m_schema             = schema;
 }
 
@@ -50,7 +50,7 @@ std::string CSecretStorage::getSecret(const std::string& secretId) {
     if (!m_schema || secretId.empty() || !secretId.starts_with("SecretStorage:"))
         return secretId;
 
-    auto parts = SplitString(secretId, ":");
+    auto parts = splitString(secretId, ":");
     if (parts.size() != 3)
         return "";
 
@@ -78,7 +78,7 @@ bool CSecretStorage::deleteSecret(const std::string& secretId) {
     if (!m_schema || secretId.empty() || !secretId.starts_with("SecretStorage:"))
         return false;
 
-    auto parts = SplitString(secretId, ":");
+    auto parts = splitString(secretId, ":");
     if (parts.size() != 3)
         return false;
 

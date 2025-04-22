@@ -12,11 +12,11 @@
 #include <iomanip>
 #include <sstream>
 
-constexpr size_t MAX_NAME_DISPLAY_LENGTH   = 40;
-constexpr size_t MAX_SECRET_DISPLAY_LENGTH = 40;
+constexpr size_t MAXNAMEDISPLAYLENGTH   = 40;
+constexpr size_t MAXSECRETDISPLAYLENGTH = 40;
 
 CAuthCLI::CAuthCLI() {
-    std::string dbPath = GetDatabasePath();
+    std::string dbPath = getDatabasePath();
     if (dbPath.empty())
         return;
 
@@ -105,7 +105,7 @@ bool CAuthCLI::commandAdd(const std::vector<std::string>& args) {
     if (args.size() >= 3) {
         try {
             digits = std::stoi(args[2]);
-            if (!ValidateDigits(digits, errorMessage)) {
+            if (!validateDigits(digits, errorMessage)) {
                 std::cerr << CColor::RED << errorMessage << CColor::RESET << "\n";
                 return false;
             }
@@ -118,7 +118,7 @@ bool CAuthCLI::commandAdd(const std::vector<std::string>& args) {
     if (args.size() >= 4) {
         try {
             period = std::stoi(args[3]);
-            if (!ValidatePeriod(period, errorMessage)) {
+            if (!validatePeriod(period, errorMessage)) {
                 std::cerr << CColor::RED << errorMessage << CColor::RESET << "\n";
                 return false;
             }
@@ -128,7 +128,7 @@ bool CAuthCLI::commandAdd(const std::vector<std::string>& args) {
         }
     }
 
-    if (!IsSecretValid(secret, errorMessage)) {
+    if (!isSecretValid(secret, errorMessage)) {
         std::cerr << CColor::RED << errorMessage << CColor::RESET << "\n";
         return false;
     }
@@ -140,7 +140,7 @@ bool CAuthCLI::commandAdd(const std::vector<std::string>& args) {
     entry.period = period;
 
     if (m_db->addEntry(entry)) {
-        std::string displayName = truncateWithEllipsis(name, MAX_NAME_DISPLAY_LENGTH);
+        std::string displayName = truncateWithEllipsis(name, MAXNAMEDISPLAYLENGTH);
         std::cout << CColor::GREEN << "Added new entry: " << displayName << CColor::RESET << "\n";
         return true;
     } else {
@@ -158,7 +158,7 @@ bool CAuthCLI::commandRemove(const std::vector<std::string>& args) {
     std::string nameOrId = args[0];
     auto        entries  = m_db->getEntries();
 
-    auto        entryOpt = FindEntryByNameOrId(entries, nameOrId);
+    auto        entryOpt = findEntryByNameOrId(entries, nameOrId);
     if (!entryOpt) {
         std::cerr << CColor::RED << "Entry not found: " << nameOrId << CColor::RESET << "\n";
         return false;
@@ -174,7 +174,7 @@ bool CAuthCLI::commandRemove(const std::vector<std::string>& args) {
     }
 
     if (success) {
-        std::string displayName = truncateWithEllipsis(entry.name, MAX_NAME_DISPLAY_LENGTH);
+        std::string displayName = truncateWithEllipsis(entry.name, MAXNAMEDISPLAYLENGTH);
         std::cout << CColor::GREEN << "Removed entry: " << displayName << CColor::RESET << "\n";
         return true;
     }
@@ -200,7 +200,7 @@ bool CAuthCLI::commandList() {
 
     size_t maxNameLength = 0;
     for (const auto& entry : entries) {
-        const std::string truncatedName = truncateWithEllipsis(entry.name, MAX_NAME_DISPLAY_LENGTH);
+        const std::string truncatedName = truncateWithEllipsis(entry.name, MAXNAMEDISPLAYLENGTH);
         maxNameLength                   = std::max(maxNameLength, truncatedName.length());
     }
 
@@ -210,12 +210,12 @@ bool CAuthCLI::commandList() {
     size_t rowNumber = 1;
 
     for (const auto& entry : entries) {
-        CTOTP       totp(entry.secret, entry.digits, entry.period);
+        CTotp       totp(entry.secret, entry.digits, entry.period);
         std::string code = totp.generate();
 
         int         periodRemaining = entry.period - (now % entry.period);
 
-        std::string displayName = truncateWithEllipsis(entry.name, MAX_NAME_DISPLAY_LENGTH);
+        std::string displayName = truncateWithEllipsis(entry.name, MAXNAMEDISPLAYLENGTH);
 
         std::cout << CColor::CYAN << std::left << std::setw(5) << rowNumber++ << CColor::RESET << CColor::GREEN << std::setw(maxNameLength + 2) << displayName << CColor::RESET
                   << CColor::BOLD << CColor::YELLOW << std::setw(8) << code << CColor::RESET << " " << CColor::MAGENTA << periodRemaining << "s" << CColor::RESET << "\n";
@@ -238,7 +238,7 @@ bool CAuthCLI::commandGenerate(const std::vector<std::string>& args) {
             return false;
     }
 
-    auto entryOpt = FindEntryByNameOrId(entries, nameOrId);
+    auto entryOpt = findEntryByNameOrId(entries, nameOrId);
     if (!entryOpt) {
         std::cerr << CColor::RED << "Entry not found: " << nameOrId << CColor::RESET << "\n";
         return false;
@@ -249,7 +249,7 @@ bool CAuthCLI::commandGenerate(const std::vector<std::string>& args) {
         return false;
     }
 
-    CTOTP       totp(entryOpt->secret, entryOpt->digits, entryOpt->period);
+    CTotp       totp(entryOpt->secret, entryOpt->digits, entryOpt->period);
     std::string code = totp.generate();
 
     std::cout << CColor::YELLOW << code << CColor::RESET << std::endl;
@@ -270,7 +270,7 @@ bool CAuthCLI::commandInfo(const std::vector<std::string>& args) {
             return false;
     }
 
-    auto entryOpt = FindEntryByNameOrId(entries, nameOrId);
+    auto entryOpt = findEntryByNameOrId(entries, nameOrId);
     if (!entryOpt) {
         std::cerr << CColor::RED << "Entry not found: " << nameOrId << CColor::RESET << "\n";
         return false;
@@ -283,15 +283,15 @@ bool CAuthCLI::commandInfo(const std::vector<std::string>& args) {
         return false;
     }
 
-    std::string displayName = truncateWithEllipsis(entry.name, MAX_NAME_DISPLAY_LENGTH);
+    std::string displayName = truncateWithEllipsis(entry.name, MAXNAMEDISPLAYLENGTH);
     std::cout << CColor::BOLD << "Name:   " << CColor::RESET << CColor::GREEN << displayName << CColor::RESET << "\n";
     std::cout << CColor::BOLD << "ID:     " << CColor::RESET << CColor::CYAN << entry.id << CColor::RESET << "\n";
-    std::string displaySecret = truncateWithEllipsis(entry.secret, MAX_SECRET_DISPLAY_LENGTH);
+    std::string displaySecret = truncateWithEllipsis(entry.secret, MAXSECRETDISPLAYLENGTH);
     std::cout << CColor::BOLD << "Secret: " << CColor::RESET << displaySecret << "\n";
     std::cout << CColor::BOLD << "Digits: " << CColor::RESET << entry.digits << "\n";
     std::cout << CColor::BOLD << "Period: " << CColor::RESET << entry.period << "s\n";
 
-    CTOTP       totp(entry.secret, entry.digits, entry.period);
+    CTotp       totp(entry.secret, entry.digits, entry.period);
     std::string code = totp.generate();
 
     time_t      now             = time(nullptr);
@@ -316,7 +316,7 @@ bool CAuthCLI::commandEdit(const std::vector<std::string>& args) {
             return false;
     }
 
-    auto entryOpt = FindEntryByNameOrId(entries, nameOrId);
+    auto entryOpt = findEntryByNameOrId(entries, nameOrId);
     if (!entryOpt) {
         std::cerr << CColor::RED << "Entry not found: " << nameOrId << CColor::RESET << "\n";
         return false;
@@ -337,7 +337,7 @@ bool CAuthCLI::commandEdit(const std::vector<std::string>& args) {
     if (args.size() > 2 && !args[2].empty()) {
         std::string secret = args[2];
 
-        if (!IsSecretValid(secret, errorMessage)) {
+        if (!isSecretValid(secret, errorMessage)) {
             std::cerr << CColor::RED << errorMessage << CColor::RESET << "\n";
             return false;
         }
@@ -348,7 +348,7 @@ bool CAuthCLI::commandEdit(const std::vector<std::string>& args) {
     if (args.size() > 3 && !args[3].empty()) {
         try {
             uint32_t digits = std::stoi(args[3]);
-            if (!ValidateDigits(digits, errorMessage)) {
+            if (!validateDigits(digits, errorMessage)) {
                 std::cerr << CColor::RED << errorMessage << CColor::RESET << "\n";
                 return false;
             }
@@ -362,7 +362,7 @@ bool CAuthCLI::commandEdit(const std::vector<std::string>& args) {
     if (args.size() > 4 && !args[4].empty()) {
         try {
             uint32_t period = std::stoi(args[4]);
-            if (!ValidatePeriod(period, errorMessage)) {
+            if (!validatePeriod(period, errorMessage)) {
                 std::cerr << CColor::RED << errorMessage << CColor::RESET << "\n";
                 return false;
             }
@@ -374,7 +374,7 @@ bool CAuthCLI::commandEdit(const std::vector<std::string>& args) {
     }
 
     if (m_db->updateEntry(entryToEdit)) {
-        std::string displayName = truncateWithEllipsis(originalName, MAX_NAME_DISPLAY_LENGTH);
+        std::string displayName = truncateWithEllipsis(originalName, MAXNAMEDISPLAYLENGTH);
         std::cout << CColor::GREEN << "Updated entry: " << displayName << CColor::RESET << "\n";
         return true;
     } else {
@@ -395,7 +395,7 @@ bool CAuthCLI::commandImport(const std::vector<std::string>& args) {
 
     if (args.size() > 1) {
         std::string formatStr = args[1];
-        StringToLowerInPlace(formatStr);
+        stringToLowerInPlace(formatStr);
 
         if (formatStr == "json")
             format = EFileFormat::JSON;
@@ -429,7 +429,7 @@ bool CAuthCLI::commandExport(const std::vector<std::string>& args) {
 
     if (args.size() > 1) {
         std::string formatStr = args[1];
-        StringToLowerInPlace(formatStr);
+        stringToLowerInPlace(formatStr);
 
         if (formatStr == "json")
             format = EFileFormat::JSON;
@@ -465,7 +465,7 @@ bool CAuthCLI::commandWipe() {
         return false;
     }
 
-    std::string dbPath = GetDatabasePath();
+    std::string dbPath = getDatabasePath();
     if (dbPath.empty()) {
         std::cerr << CColor::RED << "Could not find home directory" << CColor::RESET << "\n";
         return false;

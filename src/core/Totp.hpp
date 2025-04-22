@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <string>
 
-class CTOTP {
+class CTotp {
   public:
-    CTOTP(const std::string& secret, uint32_t digits = 6, uint32_t period = 30);
+    CTotp(const std::string& secret, uint32_t digits = 6, uint32_t period = 30);
     std::string generate() const;
 
   private:
